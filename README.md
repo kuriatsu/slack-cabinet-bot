@@ -1,5 +1,5 @@
 # slack-cabinet-bot
-automatically upload files uploaded to a channel and sync them with file cabinet  
+Automatically upload files which are sent to a channel to a cloud strage, update file cabinet according to it. 
 ![image](https://user-images.githubusercontent.com/38074802/168463348-0f411bfc-83c1-426a-8601-c25fc5fd3d5b.png)
 
 ## Setup
