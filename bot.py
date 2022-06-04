@@ -30,7 +30,7 @@ def handle_message_events(event, logger, client, body, say):
 
     for file in event["files"]:
         # print(file["filetype"])
-        if file["filetype"] != "png":
+        if file["filetype"] != "pdf":
             client.chat_postMessage(
                 text="Only PDF file for our database",
                 channel=event["channel"],
@@ -42,16 +42,25 @@ def handle_message_events(event, logger, client, body, say):
     user_name = client.users_profile_get(user=event["user"])["profile"]["real_name"]
     date = datetime.date.fromtimestamp(int(float(event["ts"])))
     for file in event["files"]:
+        response = client.files_sharedPublicURL(token=os.environ.get("SLACK_API_TOKEN"), file=file["id"])
+        permalink_public = response["file"]["permalink_public"]
+        print(permalink_public)
+        print(file["url_private_download"])
         # print(file["id"])
         content = requests.get(
-            file["url_private_download"],
-            allow_redirects=True,
-            headers={"Authorization":"Bearer{}".format(os.environ.get("SLACK_BOT_TOKEN"))},
-            stream=True
-            ).content
-        target_file = codecs.open("image.png", "wb")
-        target_file.write(content)
-        target_file.close()
+            permalink_public,
+            ).text
+        print(content)
+
+        # content = requests.get(
+        #     file["url_private_download"],
+        #     allow_redirects=True,
+        #     headers={"Authorization":"Bearer{}".format(os.environ.get("SLACK_BOT_TOKEN"))},
+        #     stream=True
+        #     ).content
+        # target_file = codecs.open("image.pdf", "wb")
+        # target_file.write(content)
+        # target_file.close()
     # temp_db[event["user"]] = {
     #     "download_url" : [file[""] for file in event["files"]]
     # }
