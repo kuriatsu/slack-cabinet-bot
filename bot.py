@@ -4,22 +4,27 @@ from slack_bolt import App, Say
 import datetime
 import requests
 import codecs
+import re
 # Initializes your app with your bot token and signing secret
 app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
 )
 
-# {user_id: {
+# ts: {
 #    files : {
-#        id:{url: ,type:}
-#        }
+#       filename:{
+#           id:,
+#           download_url:
+#           type: powerpoint/handout
+#        },
+#    },
 #    type: [],
 #    author:,
 #    title:,
 #    date:,
-#    }
 # }
+#
 temp_db = {}
 
 
@@ -38,33 +43,31 @@ def handle_message_events(event, logger, client, body, say):
             )
             return
 
-    filenum = len(event["files"])
     user_name = client.users_profile_get(user=event["user"])["profile"]["real_name"]
     date = datetime.date.fromtimestamp(int(float(event["ts"])))
-    for file in event["files"]:
-        response = client.files_sharedPublicURL(token=os.environ.get("SLACK_API_TOKEN"), file=file["id"])
-        permalink_public = response["file"]["permalink_public"]
-        print(permalink_public)
-        print(file["url_private_download"])
-        # print(file["id"])
-        content = requests.get(
-            permalink_public,
-            ).text
-        print(content)
+    # print(event["ts"])
+    message_db = {
+        "files": {},
+        "type" : None,
+        "author" : user_name,
+        "title" : None,
+        "date" : date
+    }
 
-        # content = requests.get(
-        #     file["url_private_download"],
-        #     allow_redirects=True,
-        #     headers={"Authorization":"Bearer{}".format(os.environ.get("SLACK_BOT_TOKEN"))},
-        #     stream=True
-        #     ).content
-        # target_file = codecs.open("image.pdf", "wb")
-        # target_file.write(content)
-        # target_file.close()
-    # temp_db[event["user"]] = {
-    #     "download_url" : [file[""] for file in event["files"]]
-    # }
-    if filenum == 1:
+    for file in event["files"]:
+        filename = file.get("name")
+        id = file.get("id")
+        response = client.files_sharedPublicURL(token=os.environ.get("SLACK_API_TOKEN"), file=id)
+        permalink_public = response["file"]["permalink_public"]
+        url_content = requests.get(permalink_public).text
+        pattern = re.compile(r"https://[-_./a-zA-Z0-9]+\.pdf\?pub_secret=[a-zA-Z0-9]+")
+        download_url = pattern.search(url_content).group()
+
+        message_db["files"][filename] = {"id":id, "download_url":download_url, "type":None}
+
+    temp_db[event["ts"]] = message_db
+
+    if len(message_db["files"]) == 1:
         blocks = [
         {
             "type": "input",
@@ -214,6 +217,7 @@ def handle_message_events(event, logger, client, body, say):
     except Exception as e:
         logger.error(f"Error publishing reply: {e}")
 
+
 @app.action("approve_action")
 def confirm_action_callback(ack, body):
     ack()
@@ -222,7 +226,22 @@ def confirm_action_callback(ack, body):
     author = values["author"]["author-action"]["value"]
     title = values["title"]["title-action"]["value"]
     date = values["date"]["date-action"]["selected_date"]
-    print(type, author, title, date)
+    # print(body["container"]["thread_ts"])
+    # print(type, author, title, date)
+
+    temp_db[body["container"]["thread_ts"]]["type"] = type
+    temp_db[body["container"]["thread_ts"]]["author"] = author
+    temp_db[body["container"]["thread_ts"]]["title"] = title
+    temp_db[body["container"]["thread_ts"]]["date"] = date
+
+    # try:
+    #     client.chat_delete(
+    #         channel=body["container"]["channel_id"],
+    #         ts=body["container"]["message_ts"],
+    #     )
+    #
+    # except Exception as e:
+    #     logger.error(f"Error deleting bot message: {e}")
 
 
 @app.action("deny_action")
