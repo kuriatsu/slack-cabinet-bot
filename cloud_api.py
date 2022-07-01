@@ -1,87 +1,40 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
+from googleapiclient.errors import HttpError as HTTPError
+from googleapiclient.http import MediaFileUpload
 
-"""Demonstrates how to authenticate to Google Cloud Platform APIs using
-the Google Cloud Client Libraries."""
+SCOPES = ['https://www.googleapis.com/auth/drive']
+SHARE_FOLDER_ID = ''
 
-import argparse
+sa_creds = service_account.Credentials.from_service_account_file(
+    '')
+scoped_creds = sa_creds.with_scopes(SCOPES)
+drive_service = build('drive', 'v3', credentials=scoped_creds)
 
 
-# [START auth_cloud_implicit]
-def implicit():
-    from google.cloud import storage
+file_metadata = {
+    'name': "test",
+    'parents': [SHARE_FOLDER_ID],
+    "mimeType": 'image/png',
+}
+media = MediaFileUpload(
+    "",
+    mimetype='image/png',
+    resumable=True
+)
 
-    # If you don't specify credentials when constructing the client, the
-    # client library will look for credentials in the environment.
-    storage_client = storage.Client()
+response = drive_service.files().create(
+    body=file_metadata, media_body=media, fields='id'
+).execute()
 
-    # Make an authenticated API request
-    buckets = list(storage_client.list_buckets())
-    print(buckets)
-# [END auth_cloud_implicit]
+print(response)
 
+file = None
+response = drive_service.files().list(
+    supportsAllDrives=True,
+    includeItemsFromAllDrives=True,
+    q=f"parents in '{SHARE_FOLDER_ID}' and trashed = false",
+    fields="nextPageToken, files(id, name)").execute()
 
-# [START auth_cloud_explicit]
-def explicit():
-    from google.cloud import storage
-
-    # Explicitly use service account credentials by specifying the private key
-    # file.
-    storage_client = storage.Client.from_service_account_json(
-        'service_account.json')
-
-    # Make an authenticated API request
-    buckets = list(storage_client.list_buckets())
-    print(buckets)
-# [END auth_cloud_explicit]
-
-
-# [START auth_cloud_explicit_compute_engine]
-def explicit_compute_engine(project):
-    from google.auth import compute_engine
-    from google.cloud import storage
-
-    # Explicitly use Compute Engine credentials. These credentials are
-    # available on Compute Engine, App Engine Flexible, and Kubernetes Engine.
-    credentials = compute_engine.Credentials()
-
-    # Create the client using the credentials and specifying a project ID.
-    storage_client = storage.Client(credentials=credentials, project=project)
-
-    # Make an authenticated API request
-    buckets = list(storage_client.list_buckets())
-    print(buckets)
-# [END auth_cloud_explicit_compute_engine]
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter)
-
-    subparsers = parser.add_subparsers(dest='command')
-    subparsers.add_parser('implicit', help=implicit.__doc__)
-    subparsers.add_parser('explicit', help=explicit.__doc__)
-    explicit_gce_parser = subparsers.add_parser(
-        'explicit_compute_engine', help=explicit_compute_engine.__doc__)
-    explicit_gce_parser.add_argument('project')
-
-    args = parser.parse_args()
-
-    if args.command == 'implicit':
-        implicit()
-    elif args.command == 'explicit':
-        explicit()
-    elif args.command == 'explicit_compute_engine':
-        explicit_compute_engine(args.project)
+for file in response.get('files', []):
+    print(f"Found file: {file.get('name')} ({file.get('id')})")
