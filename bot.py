@@ -3,12 +3,16 @@
 import os
 # Use the package we installed
 from slack_bolt import App, Say
+
 import datetime
 import requests
-import codecs
 import re
+import urllib.request
+import json
 
 from callback_blocks import one_file_blocks, two_file_blocks
+from cloud_api import upload_file
+
 # Initializes your app with your bot token and signing secret
 app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
@@ -27,6 +31,7 @@ app = App(
 #    author:,
 #    title:,
 #    date:,
+#    feedback:,
 # }
 #
 temp_db = {}
@@ -55,7 +60,8 @@ def handle_message_events(event, logger, client, body, say):
         "type" : None,
         "author" : user_name,
         "title" : None,
-        "date" : date
+        "date" : date,
+        "feedback" : None,
     }
 
     for file in event["files"]:
@@ -96,6 +102,16 @@ def handle_message_events(event, logger, client, body, say):
         logger.error(f"Error publishing reply: {e}")
 
 
+@app.action("document_type_1-action")
+def document_type_1_action(ack, body):
+    print(body)
+
+
+@app.action("document_type_2-action")
+def document_type_2_action(ack, body):
+    print(body)
+
+
 @app.action("approve_action")
 def confirm_action_callback(ack, body):
     ack()
@@ -107,10 +123,12 @@ def confirm_action_callback(ack, body):
     # print(body["container"]["thread_ts"])
     # print(type, author, title, date)
 
-    temp_db[body["container"]["thread_ts"]]["type"] = type
-    temp_db[body["container"]["thread_ts"]]["author"] = author
-    temp_db[body["container"]["thread_ts"]]["title"] = title
-    temp_db[body["container"]["thread_ts"]]["date"] = date
+    target_db = temp_db[body["container"]["thread_ts"]]
+    # [todo] check whether it's possible to distinguish data with ts
+    target_db["type"] = type
+    target_db["author"] = author
+    target_db["title"] = title
+    target_db["date"] = date
 
     # try:
     #     client.chat_delete(
@@ -121,6 +139,19 @@ def confirm_action_callback(ack, body):
     # except Exception as e:
     #     logger.error(f"Error deleting bot message: {e}")
 
+    for file_name, file_data in target_db["files"].items():
+        download_name = f"tmp/{file_name}"
+        dir_name = f"{date}_{author}"
+        name = f"{date}_{author}_{file_data['type']}"
+        urllib.request.urlretrieve(file["download_url"], download_name)
+        upload_file(download_name, name, dir_name, "pdf")
+
+    metadata_file = f"tmp/{date}_{author}.json"
+    json_obj = open(metadata_file, mode="w")
+    json.dump(target_db, json_obj)
+    json_obj.close()
+    upload_file(metadata_file, f"{date}_{author}.json", dir_name, "metadata")
+
 
 @app.action("deny_action")
 def confirm_action_callback(ack, body, client):
@@ -130,6 +161,7 @@ def confirm_action_callback(ack, body, client):
             channel=body["container"]["channel_id"],
             ts=body["container"]["message_ts"],
         )
+        # [todo] delete database
 
     except Exception as e:
         logger.error(f"Error deleting bot message: {e}")
